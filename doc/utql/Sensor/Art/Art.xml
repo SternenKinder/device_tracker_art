@@ -19,7 +19,7 @@
             <Edge name="ArtToTarget" displayName="Tracked Transformation" source="Art" destination="Body">
                 <Attribute name="type" value="6D" xsi:type="EnumAttributeReferenceType"/>
                 <Attribute name="mode" value="push" xsi:type="EnumAttributeReferenceType"/>
-                <Attribute name="artBodyId" displayName="A.R.T. body ID" min="1" max="20" default="1" xsi:type="IntAttributeDeclarationType">
+                <Attribute name="artBodyId" displayName="A.R.T. body ID" min="1" max="100" default="1" xsi:type="IntAttributeDeclarationType">
                     <Description><p xmlns="http://www.w3.org/1999/xhtml">Body ID used by A.R.T. (configured in DTrack software)</p></Description>
                 </Attribute>
                 <Attribute name="artType" displayName="A.R.T. marker type" default="6d" xsi:type="EnumAttributeDeclarationType">

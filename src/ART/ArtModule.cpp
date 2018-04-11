@@ -193,6 +193,13 @@ void ArtModule::HandleReceive (const boost::system::error_code err, size_t lengt
 			  lines.push_back ( s );
 			  lastpos = findpos+2;
 			}
+      
+      // add last line, even if it is not ended with "\r\n"
+      std::string s = data.substr(lastpos, (data.size() - lastpos));
+      if (s.empty() == false)
+      {
+        lines.push_back(s);
+      }
 		}
 
 		// look at every line
@@ -297,6 +304,125 @@ void ArtModule::HandleReceive (const boost::system::error_code err, size_t lengt
 					lastpos = findpos + 2;
 				}				
 			}
+      else if (recordType == "6dj")
+      {
+        LOG4CPP_TRACE(logger, "record type: 6dj");
+
+        // 6dj type from ART Human
+        // "6dj nr ac [mID nrB][bID st][s0 s1 s2 w1 w2 w3][r00 r10 r20 r01 r11 r21 r02 r12 r22]
+        // nr, ac: number of models and active models
+        // mID: model id, nrB: number of bones
+        // bID: bone id, st: status
+        // si: position, wi: euler angles
+        // rij: rotation matrix
+        // eg: "6dj 1 1 [0 2][0 1.000][1409.8648 2550.3769 994.4191 -0.1071 0.0069 -0.0056][0.999960 -0.006314 -0.006255 0.005609 0.994249 -0.106949 0.006895 0.106910 0.994245][1 1.000][1410.9012 2644.1590 1287.0870 -0.3101 0.0034 -0.0041][0.999986 -0.004938 -0.001959 0.004104 0.952291 -0.305165 0.003372 0.305153 0.952297]
+
+        // retrieve amount of bodies
+        lastpos = findpos + 1;
+        findpos = line.find(" ", lastpos);
+        int modelCount;
+        std::string count = line.substr(lastpos, findpos - lastpos);
+        if (sscanf(count.c_str(), "%d", &modelCount) != 1)
+        {
+          LOG4CPP_TRACE(logger, "illegal line, amount of models inaccessible, token: " << count);
+          continue;
+        }
+        LOG4CPP_TRACE(logger, "amount of models: " << modelCount);
+
+        // retrieve active model
+        lastpos = findpos + 1;
+        findpos = line.find(" ", lastpos);
+        int activeModel;
+        count = line.substr(lastpos, findpos - lastpos);
+        if (sscanf(count.c_str(), "%d", &activeModel) != 1)
+        {
+          LOG4CPP_TRACE(logger, "illegal line, active model inaccessible, token: " << count);
+          continue;
+        }
+        LOG4CPP_TRACE(logger, "active model: " << activeModel);
+
+        // only send first model for now
+        // TODO: adjust trySendPose to send different models
+        for (int modelIdx = 0; modelIdx < 1; modelIdx++) 
+        // iterate over all models
+        //for (int modelIdx = 0; modelIdx < modelCount; modelIdx++)
+        {
+          // retrieve modelId
+          lastpos = findpos + 2;
+          findpos = line.find(" ", lastpos);
+          int modelId;
+          count = line.substr(lastpos, findpos - lastpos);
+          if (sscanf(count.c_str(), "%d", &modelId) != 1)
+          {
+            LOG4CPP_TRACE(logger, "illegal line, modelId inaccessible, token: " << count);
+            continue;
+          }
+          LOG4CPP_TRACE(logger, "model id: " << modelId);
+
+          // retrieve number of bones
+          lastpos = findpos;
+          findpos = line.find("]", lastpos);
+          int boneCount;
+          count = line.substr(lastpos, findpos - lastpos);
+          if (sscanf(count.c_str(), "%d", &boneCount) != 1)
+          {
+            LOG4CPP_TRACE(logger, "illegal line, boneCount inaccessible, token: " << count);
+            continue;
+          }
+          LOG4CPP_TRACE(logger, "amount of bones: " << boneCount);
+
+          // iterate over bones
+          for (int boneIdx = 0; boneIdx < boneCount; boneIdx++)
+          {
+            if (lastpos > line.length())
+            {
+              LOG4CPP_TRACE(logger, "illegal line, unexpected end of line");
+              break;
+            }
+            // compute start pos by looking for the first '['
+            if ((lastpos = line.find("[", lastpos)) == std::string::npos)
+            {
+              LOG4CPP_TRACE(logger, "illegal line, next body inaccessible");
+              break;
+            }
+            // compute end pos by looking for the 3rd ']'
+            if ((findpos = line.find("]", lastpos)) == std::string::npos)
+            {
+              LOG4CPP_TRACE(logger, "last body record");
+            }
+            if ((findpos = line.find("]", findpos+1)) == std::string::npos)
+            {
+              LOG4CPP_TRACE(logger, "last body record");
+            }
+            if ((findpos = line.find("]", findpos + 1)) == std::string::npos)
+            {
+              LOG4CPP_TRACE(logger, "last body record");
+            }
+            ++findpos;
+
+            // retrieve substring for bone
+            std::string record = line.substr(lastpos, findpos - lastpos);
+            LOG4CPP_TRACE(logger, "record for bone " << boneIdx << " : " << record);
+            // parse substring
+            int id;
+            double qual;
+            double rot[6];
+            double mat[9];
+            int tokenCount = sscanf(record.c_str(), "[%d %lf][%lf %lf %lf %lf %lf %lf][%lf %lf %lf %lf %lf %lf %lf %lf %lf]",
+              &id, &qual, &rot[0], &rot[1], &rot[2], &rot[3], &rot[4], &rot[5],
+              &mat[0], &mat[3], &mat[6], &mat[1], &mat[4], &mat[7], &mat[2], &mat[5], &mat[8]);
+
+            if (tokenCount != 17) {
+              LOG4CPP_TRACE(logger, "invalid record for bone " << boneIdx);
+              break;
+            }
+            // try to send
+            trySendPose(id, ArtComponentKey::target_6d, qual, rot, mat, timestamp);
+            // update position for line search
+            lastpos = findpos;
+          }
+        }
+      }
 			else if (recordType == "6df")
 			{
 				LOG4CPP_TRACE( logger, "record type: 6df" );
